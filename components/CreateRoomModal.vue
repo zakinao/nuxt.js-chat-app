@@ -1,69 +1,67 @@
 <template>
-  <div class="m-4 p-4 bg-white shadow rounded">
-    <h2 class="text-2xl text-center text-darkGray">アカウント登録</h2>
+  <div class="bg-white shadow rounded-lg m-4 w-11/12 p-4">
     <form @submit.prevent="onSubmit">
-      <div class="flex items-center justify-center flex-col w-full h-full mt-8">
+      <div class="flex justify-center items-center flex-col mt-3">
         <div
-          :class="{ 'border-red-500': form.imageUrl.errorMessage }"
-          class="flex items-center justify-center w-32 h-32 bg-gray-200 rounded-full border border-gray-400 "
+          :class="{ 'border border-red-500': form.imageUrl.errorMessage }"
+          class="rounded-lg w-32 h-32 bg-gray-200 flex items-center justify-center"
         >
           <template v-if="form.imageUrl.val">
             <img
               :src="form.imageUrl.val"
-              class="w-32 h-32 object-cover border rounded-full"
               @click="selectImage"
+              class="w-32 h-32 object-cover border rounded-lg"
             />
           </template>
           <template v-else>
-            <i class="material-icons text-7xl text-gray" @click="selectImage">
-              person
+            <i @click="selectImage" class="material-icons text-6xl text-gray">
+              add_photo_alternate
             </i>
           </template>
           <input
             ref="image"
+            @change="onFileSelect"
             type="file"
             style="display: none"
             accept="image/*"
-            @change="onSelectFile"
           />
         </div>
-        <span v-show="form.imageUrl.errorMessage" class="text-red text-sm">{{
-          form.imageUrl.errorMessage
-        }}</span>
+        <span
+          v-show="form.imageUrl.errorMessage"
+          class="text-red text-sm text-center"
+        >
+          {{ form.imageUrl.errorMessage }}
+        </span>
       </div>
-      <label
-        class="block mt-8 mb-2 ml-2 uppercase tracking-wide text-darkGray text-s"
-      >
-        名前
-      </label>
-      <div class="h-20 mb-6">
-        <input
+      <div class="h-20 mb-4 mt-10">
+        <textarea
           v-model="form.name.val"
+          @blur="validateName"
           :class="{ 'border-red-500': form.name.errorMessage }"
-          type="text"
-          class="block w-full py-3 px-4 appearance-none bg-gray-200 text-darkGray border rounded leading-tight focus:outline-none focus:bg-white"
+          placeholder="部屋の名前を入力しよう！"
+          class="appearance-none block w-full bg-gray-200 text-darkGray border rounded py-3 px-4 leading-tight focus:outline-none focus:bg-white"
+          maxlength="mexLength"
         />
-        <span v-show="form.name.errorMessage" class="text-red text-sm">{{
-          form.name.errorMessage
-        }}</span>
+        <span v-show="form.name.errorMessage" class="text-red text-sm">
+          {{ form.name.errorMessage }}
+        </span>
       </div>
 
       <div class="flex">
         <button
-          class="w-full p-3 gradation rounded-full text-white
+          class="gradation rounded-full p-3 text-white w-full
         "
         >
-          登録
+          作成
         </button>
       </div>
     </form>
   </div>
 </template>
-
 <script>
 import { mapMutations } from 'vuex'
+
 export default {
-  middleware: ['checkRegister'],
   data() {
     return {
       form: {
@@ -73,86 +71,114 @@ export default {
           errorMessage: null
         },
         imageUrl: {
-          label: 'アイコン画像',
+          label: '画像',
           val: null,
           errorMessage: null
         }
       }
     }
   },
+
   computed: {
     isValidateError() {
       return this.form.name.errorMessage || this.form.imageUrl.errorMessage
+    },
+
+    maxLength() {
+      return 35
     }
   },
+
   methods: {
     ...mapMutations('alert', ['setMessage']),
+
     selectImage() {
       this.$refs.image.click()
     },
-    onSelectFile(e) {
+
+    onFileSelect(e) {
       const files = e.target.files
       if (files.length === 0) return
+
       const reader = new FileReader()
       reader.readAsDataURL(files[0])
+
       reader.addEventListener('load', () => {
         this.upload({
           localImageFile: files[0]
         })
       })
     },
+
+    // 画像アップロード処理
     async upload({ localImageFile }) {
       const user = await this.$auth()
+
       // 未ログインの場合
       if (!user) this.$router.push('/login')
-      // // ストレージオブジェクト作成
+
+      // ストレージオブジェクト作成
       const storageRef = this.$fireStorage.ref()
+
       // ファイルのパスを設定
       const imageRef = storageRef.child(
-        `images/${user.uid}/${localImageFile.name}`
+        `images/${user.uid}/rooms/${localImageFile.name}`
       )
+
       // ファイルを適用してファイルアップロード開始
       const snapShot = await imageRef.put(localImageFile)
       this.form.imageUrl.val = await snapShot.ref.getDownloadURL()
+
       this.validateImageUrl()
     },
+
     validateName() {
       const { name } = this.form
-      const maxLength = 8
+
       if (!name.val) {
         name.errorMessage = `${name.label}は必須入力項目です`
         return
       }
-      if (name.val.length > maxLength) {
-        name.errorMessage = `${name.label}は${maxLength}文字以内です。`
+
+      if (name.val.length > this.maxLength) {
+        name.errorMessage = `${name.label}は${this.maxLength}文字以内です。`
         return
       }
+
       name.errorMessage = null
     },
+
     validateImageUrl() {
       const { imageUrl } = this.form
+
       if (!imageUrl.val) {
         imageUrl.errorMessage = `${imageUrl.label}は必須入力項目です`
         return
       }
+
       imageUrl.errorMessage = null
     },
+
     async onSubmit() {
-      const user = await this.$auth()
-      // 未ログインの場合
+      // 認証チェック
+      const user = this.$auth.currentUser
       if (!user) this.$router.push('/login')
+
+      // 入力値チェック
       this.validateName()
       this.validateImageUrl()
       if (this.isValidateError) return
+
+      // 登録データを準備
+      const params = {
+        name: this.form.name.val,
+        topImageUrl: this.form.imageUrl.val,
+        createdAt: this.$firebase.firestore.FieldValue.serverTimestamp()
+      }
+
       try {
-        await this.$firestore
-          .collection('users')
-          .doc(user.uid)
-          .set({
-            name: this.form.name.val,
-            iconImageUrl: this.form.imageUrl.val
-          })
-        this.$router.push('/')
+        await this.$firestore.collection('rooms').add(params)
+        this.$emit('closeModal')
       } catch (e) {
         this.setMessage({ message: '登録に失敗しました。' })
       }
